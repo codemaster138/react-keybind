@@ -111,9 +111,9 @@ export class ShortcutProvider extends React.PureComponent<IShortcutProviderProps
   holdInterval?: number
   holdListeners: ISingleShortcutListener = {}
   holdTimer: number = 0
-  keysDown: string[] = []
+  keysDown: [string, string][] = []
   listeners: IShortcutListener = {}
-  previousKeys: string[] = []
+  previousKeys: [string, string][] = []
   sequenceListeners: ISingleShortcutListener = {}
   sequenceTimer?: number
   shortcuts: IShortcut[] = []
@@ -190,10 +190,11 @@ export class ShortcutProvider extends React.PureComponent<IShortcutProviderProps
       : ignoreForTagNames
     // The currently pressed key
     const key: string = e.key?.toLowerCase()
+    const code: string = e.code?.toLowerCase();
 
     // ensure that we're not focused on an element such as an <input />
     if (key && ignore.indexOf(target.tagName.toLowerCase()) < 0 && this.keysDown.indexOf(key) < 0) {
-      const keysDown: string[] = []
+      const keysDown: [string, string][] = []
       const modKeys: string[] = []
       if ((key === 'control' || e.ctrlKey === true) && ignoreKeys.indexOf('ctrl') < 0) {
         if (this.keysDown.indexOf('ctrl') < 0) keysDown.push('ctrl')
@@ -212,14 +213,26 @@ export class ShortcutProvider extends React.PureComponent<IShortcutProviderProps
         if (key === 'shift') modKeys.push(key)
       }
 
-      if ([ ...ignoreKeys, ...modKeys ].indexOf(key) < 0) {
-        keysDown.push(key)
+      if ([...ignoreKeys, ...modKeys].indexOf(key) < 0) {
+        keysDown.push([key, code])
       }
 
       this.keysDown = [...this.keysDown, ...keysDown]
 
+      function findListener(listeners: IShortcutListener): IShortcutListener[string];
+      function findListener(listeners: ISingleShortcutListener): ISingleShortcutListener[string];
+      function findListener(listeners: any): any {
+        return Object.keys(listeners)
+          .find((listener) =>
+            listener
+              .split('+')
+              .every((key, i) =>
+                this.keysDown[i].includes(key)) &&
+            this.keysDown.length === listener.split('+').length)
+      }
+
       const keyPress = this.keysDown.join('+')
-      if (this.listeners[keyPress]) {
+      if (findListener(this.listeners)) {
         // automatically preventDefault on the key
         if (preventDefault) {
           e.preventDefault()
@@ -231,9 +244,9 @@ export class ShortcutProvider extends React.PureComponent<IShortcutProviderProps
       this.resetTimer()
       this.createTimer(() => {
         keysDown.forEach(key => {
-          if (this.holdTimer >= this.holdDurations[key]) {
-            // we're paseed the duration - execute and reset the timer check
-            this.holdListeners[keyPress](e)
+          if (this.holdTimer >= (this.holdDurations[key] || this.holdDurations[code])) {
+            // we're passed the duration - execute and reset the timer check
+            findListener(this.holdListeners)(e)
             this.resetTimer()
           }
         })
@@ -298,11 +311,11 @@ export class ShortcutProvider extends React.PureComponent<IShortcutProviderProps
   /**
    * On blur of the window, we unset keyDown because the keyUp event happens outside of the window focus
    */
-   windowBlur = e => {
-     this.keysDown = []
+  windowBlur = e => {
+    this.keysDown = []
 
-     this.resetTimer()
-   }
+    this.resetTimer()
+  }
 
   /**
    * Register a new shortcut for the application
